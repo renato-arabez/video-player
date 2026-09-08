@@ -175,13 +175,11 @@
 
 <dialog id="dlg-drive">
   <h3>Adicionar pasta do Google Drive</h3>
-  <p>Isso exige um projeto no Google Cloud com a Drive API ativada. Crie um <b>OAuth Client ID</b> (tipo "App da Web") e uma <b>API Key</b>, e cole abaixo. Fica salvo só no seu navegador.</p>
+  <p>Isso exige um projeto no Google Cloud com a Drive API ativada e um <b>OAuth Client ID</b> (tipo "App da Web") criado nele. Cole abaixo — fica salvo só no seu navegador.</p>
   <label>Client ID (OAuth)</label>
   <input type="text" id="in-client-id" placeholder="xxxx.apps.googleusercontent.com">
-  <label>API Key</label>
-  <input type="text" id="in-api-key" placeholder="AIza...">
-  <label>ID da pasta no Drive</label>
-  <input type="text" id="in-folder-id" placeholder="Cole o ID da pasta (está na URL do Drive)">
+  <label>ID da pasta no Drive (ou cole o link inteiro)</label>
+  <input type="text" id="in-folder-id" placeholder="Cole o link ou só o ID da pasta">
   <label>Nome da matéria</label>
   <input type="text" id="in-drive-name" placeholder="Ex: Direito Financeiro">
   <div class="row">
@@ -366,7 +364,7 @@ async function getDriveToken(subject){
 async function buildDriveLibrary(subject){
   try{
     const token = await getDriveToken(subject);
-    const url = `https://www.googleapis.com/drive/v3/files?q='${subject.driveFolderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType)&key=${subject.apiKey}&pageSize=1000`;
+    const url = `https://www.googleapis.com/drive/v3/files?q='${subject.driveFolderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true`;
     const res = await fetch(url, {headers:{Authorization:'Bearer '+token}});
     const data = await res.json();
     if(data.error){ toast('Erro no Drive: '+data.error.message); runtime[subject.id]={lessons:[]}; return; }
@@ -395,7 +393,7 @@ async function buildDriveLibrary(subject){
 
 async function fetchDriveBlobUrl(subject, driveFileId){
   const token = await getDriveToken(subject);
-  const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media&key=${subject.apiKey}`;
+  const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
   const res = await fetch(url, {headers:{Authorization:'Bearer '+token}});
   if(!res.ok) throw new Error('Falha ao baixar vídeo do Drive');
   const blob = await res.blob();
@@ -603,20 +601,20 @@ $('#btn-add-local').onclick = addLocalFolder;
 
 $('#btn-add-drive').onclick = ()=>{
   $('#in-client-id').value = localStorage.getItem('drive-client-id')||'';
-  $('#in-api-key').value = localStorage.getItem('drive-api-key')||'';
   $('#in-folder-id').value=''; $('#in-drive-name').value='';
   $('#dlg-drive').showModal();
 };
 $('#dlg-drive-cancel').onclick = ()=>$('#dlg-drive').close();
 $('#dlg-drive-ok').onclick = async ()=>{
   const clientId = $('#in-client-id').value.trim();
-  const apiKey = $('#in-api-key').value.trim();
-  const folderId = $('#in-folder-id').value.trim();
+  let folderId = $('#in-folder-id').value.trim();
+  const m = folderId.match(/folders\/([a-zA-Z0-9_-]+)/);
+  if(m) folderId = m[1];
+  folderId = folderId.split('?')[0].trim();
   const name = $('#in-drive-name').value.trim() || 'Pasta do Drive';
-  if(!clientId || !apiKey || !folderId){ toast('Preencha todos os campos.'); return; }
+  if(!clientId || !folderId){ toast('Preencha o Client ID e o ID/link da pasta.'); return; }
   localStorage.setItem('drive-client-id', clientId);
-  localStorage.setItem('drive-api-key', apiKey);
-  const subject = {id:'drive-'+Date.now(), name, type:'drive', driveFolderId:folderId, clientId, apiKey};
+  const subject = {id:'drive-'+Date.now(), name, type:'drive', driveFolderId:folderId, clientId};
   subjects.push(subject);
   saveSubjects();
   $('#dlg-drive').close();
