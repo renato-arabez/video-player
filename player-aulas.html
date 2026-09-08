@@ -660,6 +660,7 @@ function persistCurrentProgress(){
   if(!currentVideoId || !v.duration) return;
   progress[currentVideoId] = {time: v.currentTime, duration: v.duration, updated: Date.now()};
   saveProgress();
+  scheduleFolderWrite(currentVideoId);
 }
 
 /* ---------------- Wiring ---------------- */
