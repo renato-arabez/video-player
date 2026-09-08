@@ -115,7 +115,7 @@
   .toolbar-group button{padding:4px 8px;font-size:12px;}
   .toolbar-group button.active{background:var(--accent);color:#1a1408;border-color:var(--accent);}
 
-  #video-list{flex:1;overflow-y:auto;padding:14px 16px 40px;--thumb-w:96px;}
+  #video-list{flex:1;overflow-y:auto;padding:14px 16px 40px;--thumb-h:180px;}
   .video-row{
     display:flex;gap:12px;align-items:center;
     padding:8px;border-radius:var(--radius);cursor:pointer;
@@ -124,7 +124,7 @@
   .video-row:hover{background:var(--surface);}
   .video-row.active{border-color:var(--accent-dim);background:var(--surface);}
   .thumb{
-    width:var(--thumb-w);height:calc(var(--thumb-w) * 0.5625);flex-shrink:0;border-radius:4px;overflow:hidden;
+    height:var(--thumb-h);width:calc(var(--thumb-h) * 16 / 9);flex-shrink:0;border-radius:4px;overflow:hidden;
     background:var(--surface-2);position:relative;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);font-size:10px;
   }
@@ -589,7 +589,7 @@ function renderSidebar(){
 async function openLesson(subject, lesson){
   $('#empty-state').style.display='none';
   const list = $('#video-list');
-  list.style.display='block';
+  list.style.display = listLayout==='grid' ? 'grid' : 'block';
   list.innerHTML = '';
   $('#list-toolbar').style.display='flex';
   $('#list-title').textContent = `${lesson.label} — ${subject.name}`;
@@ -737,14 +737,14 @@ $('#dlg-drive-ok').onclick = async ()=>{
 $('#btn-progress').onclick = ()=>$('#dlg-progress').showModal();
 $('#dlg-progress-close').onclick = ()=>$('#dlg-progress').close();
 
-/* Thumb size */
-const THUMB_SIZES = [72, 96, 128, 160, 200];
-let thumbSizeIdx = THUMB_SIZES.indexOf(parseInt(localStorage.getItem('ui-thumb-w'))) ;
-if(thumbSizeIdx < 0) thumbSizeIdx = 2;
+/* Thumb size (height-based) */
+const THUMB_SIZES = [100, 130, 150, 180, 220, 260];
+let thumbSizeIdx = THUMB_SIZES.indexOf(parseInt(localStorage.getItem('ui-thumb-h')));
+if(thumbSizeIdx < 0) thumbSizeIdx = 3; // defaults to 180px
 function applyThumbSize(){
-  const w = THUMB_SIZES[thumbSizeIdx];
-  $('#video-list').style.setProperty('--thumb-w', w+'px');
-  localStorage.setItem('ui-thumb-w', w);
+  const h = THUMB_SIZES[thumbSizeIdx];
+  $('#video-list').style.setProperty('--thumb-h', h+'px');
+  localStorage.setItem('ui-thumb-h', h);
 }
 $('#btn-size-dec').onclick = ()=>{ thumbSizeIdx = Math.max(0, thumbSizeIdx-1); applyThumbSize(); };
 $('#btn-size-inc').onclick = ()=>{ thumbSizeIdx = Math.min(THUMB_SIZES.length-1, thumbSizeIdx+1); applyThumbSize(); };
@@ -753,7 +753,11 @@ applyThumbSize();
 /* Layout: list vs grid */
 let listLayout = localStorage.getItem('ui-layout') || 'list';
 function applyLayout(){
-  $('#video-list').classList.toggle('grid', listLayout==='grid');
+  const list = $('#video-list');
+  list.classList.toggle('grid', listLayout==='grid');
+  if(list.style.display !== 'none'){
+    list.style.display = listLayout==='grid' ? 'grid' : 'block';
+  }
   $('#btn-layout-list').classList.toggle('active', listLayout==='list');
   $('#btn-layout-grid').classList.toggle('active', listLayout==='grid');
   localStorage.setItem('ui-layout', listLayout);
