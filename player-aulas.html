@@ -135,9 +135,9 @@
   .video-meta .s{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
   .check{width:18px;text-align:center;color:var(--ok);font-size:14px;flex-shrink:0;}
 
-  #video-list.grid{display:flex;flex-wrap:wrap;align-content:flex-start;gap:14px;}
+  #video-list.grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:14px;align-items:start;}
   #video-list.grid .video-row{
-    flex-direction:column;align-items:stretch;width:var(--thumb-w);
+    flex-direction:column;align-items:stretch;width:auto;
     border:1px solid var(--border);padding:8px;gap:8px;position:relative;
   }
   #video-list.grid .thumb{width:100%;height:auto;aspect-ratio:16/9;}
@@ -187,7 +187,12 @@
       <button id="btn-seek-back" title="Voltar 10s (seta ←)">⟲ 10s</button>
       <button id="btn-seek-fwd" title="Avançar 10s (seta →)">10s ⟳</button>
     </div>
+    <div id="track-group" style="display:flex;gap:4px;border-left:1px solid var(--border);padding-left:10px;">
+      <button id="btn-prev-video" title="Vídeo anterior">⏮ Anterior</button>
+      <button id="btn-next-video" title="Próximo vídeo">Próximo ⏭</button>
+    </div>
     <span id="now-title"></span>
+    <button id="btn-save-now" title="Forçar salvar progresso na pasta agora">Salvar agora</button>
   </div>
   <div id="empty-state">Adicione uma pasta local ou do Google Drive para começar.</div>
   <div id="list-toolbar">
@@ -345,7 +350,13 @@ async function writeFolderProgress(handle, data){
     const writable = await fh.createWritable();
     await writable.write(JSON.stringify(data));
     await writable.close();
-  }catch(e){ console.warn('Não foi possível salvar progresso na pasta', e); }
+    console.log('[aulas] progresso salvo em', PROGRESS_FILENAME, data);
+    return true;
+  }catch(e){
+    console.error('[aulas] falha ao salvar progresso na pasta:', e);
+    toast('Falha ao salvar na pasta: '+e.message);
+    return false;
+  }
 }
 let folderWriteTimer=null;
 function scheduleFolderWrite(videoId){
@@ -476,8 +487,10 @@ async function fetchDriveBlobUrl(subject, driveFileId){
 }
 
 /* ---------------- Thumbnails ---------------- */
+const THUMB_VERSION = 'v2';
 async function getThumb(video){
-  const cached = await idbGet('thumbs', video.id);
+  const cacheKey = video.id+'@'+THUMB_VERSION;
+  const cached = await idbGet('thumbs', cacheKey);
   if(cached) return cached;
   try{
     let srcUrl;
@@ -487,8 +500,6 @@ async function getThumb(video){
       const file = await video.fileEntry.getFile();
       srcUrl = URL.createObjectURL(file);
     } else {
-      // Skip auto-thumb generation for Drive to avoid burning API quota on every list render;
-      // generated lazily only when user opens the subject, cached after.
       const subject = subjects.find(s=>video.id.startsWith(s.id+'::'));
       srcUrl = await fetchDriveBlobUrl(subject, video.driveFileId);
     }
@@ -499,11 +510,11 @@ async function getThumb(video){
       setTimeout(rej, 8000);
     });
     const canvas = document.createElement('canvas');
-    canvas.width=160; canvas.height=90;
-    canvas.getContext('2d').drawImage(tempEl,0,0,160,90);
-    const dataUrl = canvas.toDataURL('image/jpeg',0.6);
+    canvas.width=640; canvas.height=360;
+    canvas.getContext('2d').drawImage(tempEl,0,0,640,360);
+    const dataUrl = canvas.toDataURL('image/jpeg',0.8);
     URL.revokeObjectURL(srcUrl);
-    idbSet('thumbs', video.id, dataUrl);
+    idbSet('thumbs', cacheKey, dataUrl);
     return dataUrl;
   }catch(e){ return null; }
 }
@@ -625,12 +636,34 @@ function renderSpeedButtons(){
   });
 }
 
+let currentSubject = null;
+function getFlatPlaylist(subject){
+  const rt = runtime[subject.id];
+  if(!rt || !rt.lessons) return [];
+  const flat=[];
+  rt.lessons.forEach(lesson=>{ lesson.videos.forEach(v=> flat.push({lesson, video:v})); });
+  return flat;
+}
+async function playAdjacent(delta){
+  if(!currentSubject || !currentVideoId) return;
+  const flat = getFlatPlaylist(currentSubject);
+  const idx = flat.findIndex(x=>x.video.id===currentVideoId);
+  if(idx<0) return;
+  const newIdx = idx+delta;
+  if(newIdx<0 || newIdx>=flat.length){ toast(delta>0?'Não há próximo vídeo.':'Não há vídeo anterior.'); return; }
+  const {lesson, video} = flat[newIdx];
+  await openLesson(currentSubject, lesson);
+  const rowEl = document.querySelector(`.video-row[data-id="${video.id}"]`);
+  playVideo(currentSubject, video, rowEl);
+}
+
 async function playVideo(subject, video, rowEl){
   $$('.video-row').forEach(r=>r.classList.remove('active'));
   if(rowEl) rowEl.classList.add('active');
   $('#controls-bar').style.display='flex';
   $('#now-title').textContent = video.title;
   currentVideoId = video.id;
+  currentSubject = subject;
   const v = $('#video');
   let src;
   try{
@@ -707,7 +740,7 @@ $('#dlg-progress-close').onclick = ()=>$('#dlg-progress').close();
 /* Thumb size */
 const THUMB_SIZES = [72, 96, 128, 160, 200];
 let thumbSizeIdx = THUMB_SIZES.indexOf(parseInt(localStorage.getItem('ui-thumb-w'))) ;
-if(thumbSizeIdx < 0) thumbSizeIdx = 1;
+if(thumbSizeIdx < 0) thumbSizeIdx = 2;
 function applyThumbSize(){
   const w = THUMB_SIZES[thumbSizeIdx];
   $('#video-list').style.setProperty('--thumb-w', w+'px');
@@ -737,6 +770,22 @@ function seekBy(delta){
 }
 $('#btn-seek-back').onclick = ()=>seekBy(-10);
 $('#btn-seek-fwd').onclick = ()=>seekBy(10);
+$('#btn-prev-video').onclick = ()=>playAdjacent(-1);
+$('#btn-next-video').onclick = ()=>playAdjacent(1);
+$('#btn-save-now').onclick = async ()=>{
+  if(!currentVideoId){ toast('Nenhum vídeo selecionado.'); return; }
+  persistCurrentProgress();
+  const subjectId = currentVideoId.split('::')[0];
+  const subject = subjects.find(s=>s.id===subjectId);
+  const rt = runtime[subjectId];
+  if(!subject || subject.type!=='local'){ toast('Essa matéria não é uma pasta local.'); return; }
+  if(!rt || !rt.dirHandle){ toast('Sem referência da pasta — reabra a matéria clicando nela na barra lateral.'); return; }
+  clearTimeout(folderWriteTimer);
+  const subset = {};
+  for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
+  const ok = await writeFolderProgress(rt.dirHandle, subset);
+  if(ok) toast('Progresso salvo em '+PROGRESS_FILENAME);
+};
 document.addEventListener('keydown', (e)=>{
   const tag = (document.activeElement && document.activeElement.tagName) || '';
   if(tag==='INPUT' || tag==='TEXTAREA') return;
