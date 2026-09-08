@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player de Aulas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14161a;
+    --surface:#1b1e24;
+    --surface-2:#242830;
+    --border:#2c313a;
+    --text:#e8e6e1;
+    --text-dim:#9aa0aa;
+    --accent:#cf9d4f;
+    --accent-dim:#8a713a;
+    --ok:#4f8a8b;
+    --danger:#b5533f;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+  }
+  h1,h2,h3{font-family:'Source Serif 4',serif;font-weight:600;margin:0;}
+  button{
+    font-family:inherit;
+    cursor:pointer;
+    background:var(--surface-2);
+    color:var(--text);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:6px 10px;
+    font-size:13px;
+  }
+  button:hover{border-color:var(--accent-dim);}
+  button.primary{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600;}
+  button.primary:hover{background:#dcae63;}
+  button.ghost{background:transparent;border-color:transparent;color:var(--text-dim);}
+  button.ghost:hover{color:var(--text);border-color:var(--border);}
+  input[type=text]{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:var(--radius);padding:6px 8px;font-size:13px;font-family:inherit;
+  }
+
+  /* Sidebar */
+  #sidebar{
+    width:300px;min-width:300px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;
+    height:100%;
+  }
+  #sidebar-head{
+    padding:16px 16px 12px;
+    border-bottom:1px solid var(--border);
+  }
+  #sidebar-head h1{font-size:18px;letter-spacing:.2px;}
+  #sidebar-head p{margin:4px 0 0;font-size:12px;color:var(--text-dim);}
+  #add-buttons{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  #subject-tree{flex:1;overflow-y:auto;padding:6px 0;}
+
+  .subject{border-bottom:1px solid rgba(255,255,255,.04);}
+  .subject-row{
+    display:flex;align-items:center;gap:8px;
+    padding:10px 14px;cursor:pointer;font-size:13.5px;font-weight:600;
+  }
+  .subject-row:hover{background:var(--surface-2);}
+  .subject-row .chev{color:var(--text-dim);font-size:11px;width:10px;transition:transform .15s;}
+  .subject-row.open .chev{transform:rotate(90deg);}
+  .subject-badge{margin-left:auto;font-size:10px;color:var(--text-dim);font-weight:400;background:var(--surface-2);border-radius:10px;padding:1px 7px;}
+  .subject-warn{margin-left:auto;font-size:11px;color:var(--danger);}
+
+  .lesson-list{display:none;padding:2px 0 6px;}
+  .lesson-list.open{display:block;}
+  .lesson{padding:6px 14px 6px 26px;font-size:12.5px;color:var(--text-dim);cursor:pointer;}
+  .lesson:hover{color:var(--text);}
+  .lesson.active{color:var(--accent);font-weight:600;}
+  .lesson .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;background:var(--border);vertical-align:middle;}
+  .lesson.done .dot{background:var(--ok);}
+  .lesson.progress .dot{background:var(--accent);}
+
+  /* Main */
+  #main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+  #player-wrap{background:#000;flex-shrink:0;position:relative;}
+  video{width:100%;max-height:60vh;display:block;background:#000;}
+  #empty-state{
+    flex:1;display:flex;align-items:center;justify-content:center;
+    color:var(--text-dim);font-size:14px;text-align:center;padding:40px;
+  }
+  #controls-bar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 16px;border-bottom:1px solid var(--border);background:var(--surface);
+  }
+  #speed-group{display:flex;gap:4px;}
+  #speed-group button{padding:4px 9px;font-size:12px;}
+  #speed-group button.active{background:var(--accent);color:#1a1408;border-color:var(--accent);font-weight:600;}
+  #now-title{font-size:13px;color:var(--text-dim);margin-right:auto;}
+
+  #video-list{flex:1;overflow-y:auto;padding:14px 16px 40px;}
+  #video-list h2{font-size:15px;margin-bottom:10px;color:var(--text);}
+  .video-row{
+    display:flex;gap:12px;align-items:center;
+    padding:8px;border-radius:var(--radius);cursor:pointer;
+    border:1px solid transparent;
+  }
+  .video-row:hover{background:var(--surface);}
+  .video-row.active{border-color:var(--accent-dim);background:var(--surface);}
+  .thumb{
+    width:96px;height:56px;flex-shrink:0;border-radius:4px;overflow:hidden;
+    background:var(--surface-2);position:relative;display:flex;align-items:center;justify-content:center;
+    color:var(--text-dim);font-size:10px;
+  }
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .thumb .bar{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);}
+  .video-meta{flex:1;min-width:0;}
+  .video-meta .t{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .video-meta .s{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+  .check{width:18px;text-align:center;color:var(--ok);font-size:14px;flex-shrink:0;}
+
+  dialog{
+    background:var(--surface);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:20px;max-width:480px;width:90%;
+  }
+  dialog::backdrop{background:rgba(0,0,0,.6);}
+  dialog h3{margin-bottom:10px;font-size:16px;}
+  dialog p{font-size:12.5px;color:var(--text-dim);line-height:1.5;}
+  dialog label{display:block;font-size:12px;margin:10px 0 4px;color:var(--text-dim);}
+  dialog input[type=text]{width:100%;}
+  dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
+  a.link{color:var(--accent);}
+  #toast{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    background:var(--surface-2);border:1px solid var(--border);padding:8px 14px;
+    border-radius:6px;font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;
+  }
+  #toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-head">
+    <h1>Aulas</h1>
+    <p>Suas matérias, seus vídeos, seu progresso.</p>
+  </div>
+  <div id="add-buttons">
+    <button class="primary" id="btn-add-local" title="Adicionar uma pasta do computador como matéria">+ Pasta local</button>
+    <button id="btn-add-drive" title="Adicionar uma pasta do Google Drive como matéria">+ Google Drive</button>
+    <button class="ghost" id="btn-progress" title="Exportar ou importar seu progresso">Progresso</button>
+  </div>
+  <div id="subject-tree"></div>
+</div>
+
+<div id="main">
+  <div id="player-wrap">
+    <video id="video" controls playsinline></video>
+  </div>
+  <div id="controls-bar" style="display:none">
+    <div id="speed-group"></div>
+    <span id="now-title"></span>
+  </div>
+  <div id="empty-state">Adicione uma pasta local ou do Google Drive para começar.</div>
+  <div id="video-list" style="display:none"></div>
+</div>
+
+<dialog id="dlg-drive">
+  <h3>Adicionar pasta do Google Drive</h3>
+  <p>Isso exige um projeto no Google Cloud com a Drive API ativada. Crie um <b>OAuth Client ID</b> (tipo "App da Web") e uma <b>API Key</b>, e cole abaixo. Fica salvo só no seu navegador.</p>
+  <label>Client ID (OAuth)</label>
+  <input type="text" id="in-client-id" placeholder="xxxx.apps.googleusercontent.com">
+  <label>API Key</label>
+  <input type="text" id="in-api-key" placeholder="AIza...">
+  <label>ID da pasta no Drive</label>
+  <input type="text" id="in-folder-id" placeholder="Cole o ID da pasta (está na URL do Drive)">
+  <label>Nome da matéria</label>
+  <input type="text" id="in-drive-name" placeholder="Ex: Direito Financeiro">
+  <div class="row">
+    <button class="ghost" id="dlg-drive-cancel">Cancelar</button>
+    <button class="primary" id="dlg-drive-ok">Conectar e adicionar</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-progress">
+  <h3>Backup de progresso</h3>
+  <p>Seu progresso já é salvo automaticamente no navegador. Use os botões abaixo para exportar um arquivo JSON de backup ou importar em outro navegador/computador.</p>
+  <div class="row">
+    <button id="btn-export">Exportar JSON</button>
+    <label class="primary" style="padding:6px 10px;border-radius:6px;">Importar JSON
+      <input type="file" id="in-import" accept="application/json" style="display:none">
+    </label>
+    <button class="ghost" id="dlg-progress-close">Fechar</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+/* ---------------- Utilities ---------------- */
+const $ = (s,el=document)=>el.querySelector(s);
+const $$ = (s,el=document)=>[...el.querySelectorAll(s)];
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function fmtTime(sec){
+  sec=Math.floor(sec||0);
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+  return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0');
+}
+function cleanTitle(filename, lessonNum, partNum){
+  let name = filename.replace(/\.\w+$/,'');
+  let m = name.match(/720p\s*[-_ ]*(.+)$/i);
+  let tail = m && m[1] ? m[1].trim() : '';
+  tail = tail.replace(/[_]+/g,' ').trim();
+  if(tail) return tail.charAt(0).toUpperCase()+tail.slice(1);
+  if(lessonNum!==undefined) return `Aula ${lessonNum}${partNum!==undefined?' • Parte '+partNum:''}`;
+  return name;
+}
+function parseLesson(filename){
+  let m = filename.match(/^aula\s*0*(\d+)\s*-\s*0*(\d+)\s*-/i);
+  if(m) return {lessonNum:m[1], partNum:m[2]};
+  m = filename.match(/^aula\s*0*(\d+)\s*-/i);
+  if(m) return {lessonNum:m[1], partNum:'1'};
+  return null;
+}
+
+/* ---------------- IndexedDB (handles + thumbnails) ---------------- */
+let idb;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open('aulas-player', 1);
+    r.onupgradeneeded = ()=>{
+      const db = r.result;
+      if(!db.objectStoreNames.contains('handles')) db.createObjectStore('handles');
+      if(!db.objectStoreNames.contains('thumbs')) db.createObjectStore('thumbs');
+    };
+    r.onsuccess = ()=>{ idb=r.result; res(idb); };
+    r.onerror = ()=>rej(r.error);
+  });
+}
+function idbSet(store,key,val){
+  return new Promise((res,rej)=>{
+    const tx = idb.transaction(store,'readwrite');
+    tx.objectStore(store).put(val,key);
+    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+  });
+}
+function idbGet(store,key){
+  return new Promise((res,rej)=>{
+    const tx = idb.transaction(store,'readonly');
+    const rq = tx.objectStore(store).get(key);
+    rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error);
+  });
+}
+function idbDel(store,key){
+  return new Promise((res,rej)=>{
+    const tx = idb.transaction(store,'readwrite');
+    tx.objectStore(store).delete(key);
+    tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error);
+  });
+}
+
+/* ---------------- State ---------------- */
+// subjects: [{id, name, type:'local'|'drive', driveFolderId, clientId, apiKey}]
+let subjects = JSON.parse(localStorage.getItem('subjects')||'[]');
+// progress: { [videoId]: {time, duration, updated} }
+let progress = JSON.parse(localStorage.getItem('progress')||'{}');
+// runtime caches (not persisted): subjectId -> { lessons: [...], filesByVideoId: {} }
+const runtime = {};
+let currentVideoId = null;
+let driveTokenClients = {}; // subjectId -> access token cache {token, exp}
+
+function saveSubjects(){ localStorage.setItem('subjects', JSON.stringify(subjects)); }
+function saveProgress(){ localStorage.setItem('progress', JSON.stringify(progress)); }
+
+/* ---------------- Local folder handling ---------------- */
+const VIDEO_EXT = /\.(mp4|webm|ogg|mov|m4v|mkv)$/i;
+
+async function addLocalFolder(){
+  if(!window.showDirectoryPicker){
+    toast('Seu navegador não suporta seleção de pasta persistente. Use Chrome ou Edge.');
+    return;
+  }
+  try{
+    const handle = await window.showDirectoryPicker();
+    const id = 'local-'+Date.now();
+    subjects.push({id, name: handle.name, type:'local'});
+    saveSubjects();
+    await idbSet('handles', id, handle);
+    await buildLocalLibrary(id, handle);
+    renderSidebar();
+  }catch(e){ if(e.name!=='AbortError') console.error(e); }
+}
+
+async function buildLocalLibrary(subjectId, handle){
+  const perm = await handle.queryPermission({mode:'read'});
+  if(perm!=='granted'){
+    const req = await handle.requestPermission({mode:'read'});
+    if(req!=='granted'){
+      runtime[subjectId] = {needsPermission:true, lessons:[]};
+      return;
+    }
+  }
+  const files = [];
+  for await (const [name, entry] of handle.entries()){
+    if(entry.kind==='file' && VIDEO_EXT.test(name)) files.push({name, entry});
+  }
+  files.sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{numeric:true}));
+  const lessonsMap = new Map();
+  for(const f of files){
+    const parsed = parseLesson(f.name);
+    const lessonKey = parsed ? parsed.lessonNum : f.name;
+    const lessonLabel = parsed ? `Aula ${parsed.lessonNum}` : f.name.replace(/\.\w+$/,'');
+    if(!lessonsMap.has(lessonKey)) lessonsMap.set(lessonKey, {label:lessonLabel, videos:[]});
+    const videoId = subjectId+'::'+f.name;
+    lessonsMap.get(lessonKey).videos.push({
+      id: videoId,
+      title: cleanTitle(f.name, parsed && parsed.lessonNum, parsed && parsed.partNum),
+      fileEntry: f.entry,
+      type:'local'
+    });
+  }
+  runtime[subjectId] = { lessons: [...lessonsMap.values()] };
+}
+
+/* ---------------- Google Drive handling ---------------- */
+let gisLoaded = false;
+function loadGis(){
+  return new Promise((res)=>{
+    if(gisLoaded) return res();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = ()=>{ gisLoaded=true; res(); };
+    document.head.appendChild(s);
+  });
+}
+
+async function getDriveToken(subject){
+  const cache = driveTokenClients[subject.id];
+  if(cache && cache.exp > Date.now()+30000) return cache.token;
+  await loadGis();
+  return new Promise((resolve,reject)=>{
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: subject.clientId,
+      scope: 'https://www.googleapis.com/auth/drive.readonly',
+      callback: (resp)=>{
+        if(resp.error) return reject(resp);
+        driveTokenClients[subject.id] = {token: resp.access_token, exp: Date.now()+ (resp.expires_in*1000)};
+        resolve(resp.access_token);
+      }
+    });
+    tc.requestAccessToken({prompt:''});
+  });
+}
+
+async function buildDriveLibrary(subject){
+  try{
+    const token = await getDriveToken(subject);
+    const url = `https://www.googleapis.com/drive/v3/files?q='${subject.driveFolderId}'+in+parents+and+trashed=false&fields=files(id,name,mimeType)&key=${subject.apiKey}&pageSize=1000`;
+    const res = await fetch(url, {headers:{Authorization:'Bearer '+token}});
+    const data = await res.json();
+    if(data.error){ toast('Erro no Drive: '+data.error.message); runtime[subject.id]={lessons:[]}; return; }
+    const files = (data.files||[]).filter(f=>f.mimeType && f.mimeType.startsWith('video/'));
+    files.sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{numeric:true}));
+    const lessonsMap = new Map();
+    for(const f of files){
+      const parsed = parseLesson(f.name);
+      const lessonKey = parsed ? parsed.lessonNum : f.name;
+      const lessonLabel = parsed ? `Aula ${parsed.lessonNum}` : f.name.replace(/\.\w+$/,'');
+      if(!lessonsMap.has(lessonKey)) lessonsMap.set(lessonKey, {label:lessonLabel, videos:[]});
+      const videoId = subject.id+'::'+f.id;
+      lessonsMap.get(lessonKey).videos.push({
+        id: videoId,
+        title: cleanTitle(f.name, parsed && parsed.lessonNum, parsed && parsed.partNum),
+        driveFileId: f.id,
+        type:'drive'
+      });
+    }
+    runtime[subject.id] = { lessons: [...lessonsMap.values()] };
+  }catch(e){
+    console.error(e);
+    runtime[subject.id] = {needsPermission:true, lessons:[]};
+  }
+}
+
+async function fetchDriveBlobUrl(subject, driveFileId){
+  const token = await getDriveToken(subject);
+  const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media&key=${subject.apiKey}`;
+  const res = await fetch(url, {headers:{Authorization:'Bearer '+token}});
+  if(!res.ok) throw new Error('Falha ao baixar vídeo do Drive');
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/* ---------------- Thumbnails ---------------- */
+async function getThumb(video){
+  const cached = await idbGet('thumbs', video.id);
+  if(cached) return cached;
+  try{
+    let srcUrl;
+    let tempEl = document.createElement('video');
+    tempEl.muted = true; tempEl.crossOrigin='anonymous';
+    if(video.type==='local'){
+      const file = await video.fileEntry.getFile();
+      srcUrl = URL.createObjectURL(file);
+    } else {
+      // Skip auto-thumb generation for Drive to avoid burning API quota on every list render;
+      // generated lazily only when user opens the subject, cached after.
+      const subject = subjects.find(s=>video.id.startsWith(s.id+'::'));
+      srcUrl = await fetchDriveBlobUrl(subject, video.driveFileId);
+    }
+    tempEl.src = srcUrl;
+    await new Promise((res,rej)=>{
+      tempEl.onloadedmetadata=()=>{ tempEl.currentTime = Math.min(5, tempEl.duration*0.1||1); };
+      tempEl.onseeked=res; tempEl.onerror=rej;
+      setTimeout(rej, 8000);
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width=160; canvas.height=90;
+    canvas.getContext('2d').drawImage(tempEl,0,0,160,90);
+    const dataUrl = canvas.toDataURL('image/jpeg',0.6);
+    URL.revokeObjectURL(srcUrl);
+    idbSet('thumbs', video.id, dataUrl);
+    return dataUrl;
+  }catch(e){ return null; }
+}
+
+/* ---------------- Sidebar rendering ---------------- */
+function renderSidebar(){
+  const tree = $('#subject-tree');
+  tree.innerHTML='';
+  subjects.forEach(subject=>{
+    const wrap = document.createElement('div');
+    wrap.className='subject';
+    const rt = runtime[subject.id];
+    const row = document.createElement('div');
+    row.className='subject-row';
+    row.innerHTML = `<span class="chev">▸</span><span>${subject.name}</span>` +
+      (rt && rt.needsPermission ? `<span class="subject-warn">reconectar</span>` :
+      `<span class="subject-badge">${rt? rt.lessons.length : '…'} aulas</span>`);
+    const lessonList = document.createElement('div');
+    lessonList.className='lesson-list';
+
+    row.onclick = async ()=>{
+      if(rt && rt.needsPermission){
+        if(subject.type==='local'){
+          const handle = await idbGet('handles', subject.id);
+          await buildLocalLibrary(subject.id, handle);
+        } else {
+          await buildDriveLibrary(subject);
+        }
+        renderSidebar();
+        return;
+      }
+      row.classList.toggle('open');
+      lessonList.classList.toggle('open');
+    };
+
+    if(rt && rt.lessons){
+      rt.lessons.forEach(lesson=>{
+        const li = document.createElement('div');
+        li.className='lesson';
+        const allDone = lesson.videos.every(v=>{
+          const p = progress[v.id];
+          return p && p.duration && p.time >= p.duration*0.95;
+        });
+        const anyStarted = lesson.videos.some(v=>progress[v.id] && progress[v.id].time>2);
+        if(allDone) li.classList.add('done'); else if(anyStarted) li.classList.add('progress');
+        li.innerHTML = `<span class="dot"></span>${lesson.label}`;
+        li.onclick = (e)=>{ e.stopPropagation(); openLesson(subject, lesson); };
+        lessonList.appendChild(li);
+      });
+    }
+
+    wrap.appendChild(row);
+    wrap.appendChild(lessonList);
+    tree.appendChild(wrap);
+  });
+}
+
+/* ---------------- Lesson / video list rendering ---------------- */
+async function openLesson(subject, lesson){
+  $('#empty-state').style.display='none';
+  const list = $('#video-list');
+  list.style.display='block';
+  list.innerHTML = `<h2>${lesson.label} — ${subject.name}</h2>`;
+  for(const video of lesson.videos){
+    const row = document.createElement('div');
+    row.className='video-row';
+    row.dataset.id = video.id;
+    const p = progress[video.id];
+    const pct = p && p.duration ? Math.min(100, (p.time/p.duration)*100) : 0;
+    const done = p && p.duration && p.time >= p.duration*0.95;
+    row.innerHTML = `
+      <div class="thumb" data-thumb><span>carregando…</span><div class="bar" style="width:${pct}%"></div></div>
+      <div class="video-meta">
+        <div class="t">${video.title}</div>
+        <div class="s">${p ? fmtTime(p.time)+(p.duration?' / '+fmtTime(p.duration):'') : 'não iniciado'}</div>
+      </div>
+      <div class="check">${done?'✓':''}</div>
+    `;
+    row.onclick = ()=>playVideo(subject, video, row);
+    list.appendChild(row);
+    const thumbEl = row.querySelector('[data-thumb]');
+    getThumb(video).then(url=>{
+      if(url) thumbEl.innerHTML = `<img src="${url}"><div class="bar" style="width:${pct}%"></div>`;
+      else thumbEl.innerHTML = `<span>sem prévia</span>`;
+    });
+  }
+}
+
+/* ---------------- Player ---------------- */
+const speeds = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5];
+function renderSpeedButtons(){
+  const g = $('#speed-group');
+  g.innerHTML='';
+  speeds.forEach(sp=>{
+    const b = document.createElement('button');
+    b.textContent = sp+'x';
+    b.onclick = ()=>{
+      $('#video').playbackRate = sp;
+      $$('#speed-group button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+    };
+    if(sp===1) b.classList.add('active');
+    g.appendChild(b);
+  });
+}
+
+async function playVideo(subject, video, rowEl){
+  $$('.video-row').forEach(r=>r.classList.remove('active'));
+  if(rowEl) rowEl.classList.add('active');
+  $('#controls-bar').style.display='flex';
+  $('#now-title').textContent = video.title;
+  currentVideoId = video.id;
+  const v = $('#video');
+  let src;
+  try{
+    if(video.type==='local'){
+      const file = await video.fileEntry.getFile();
+      src = URL.createObjectURL(file);
+    } else {
+      toast('Carregando do Google Drive…');
+      src = await fetchDriveBlobUrl(subject, video.driveFileId);
+    }
+  }catch(e){
+    toast('Não foi possível carregar este vídeo.');
+    return;
+  }
+  v.src = src;
+  v.playbackRate = 1;
+  $$('#speed-group button').forEach(x=>x.classList.toggle('active', x.textContent==='1x'));
+  const p = progress[video.id];
+  v.onloadedmetadata = ()=>{
+    if(p && p.time && p.time < v.duration*0.98) v.currentTime = p.time;
+    v.play().catch(()=>{});
+  };
+}
+
+function persistCurrentProgress(){
+  const v = $('#video');
+  if(!currentVideoId || !v.duration) return;
+  progress[currentVideoId] = {time: v.currentTime, duration: v.duration, updated: Date.now()};
+  saveProgress();
+}
+
+/* ---------------- Wiring ---------------- */
+$('#video').addEventListener('timeupdate', ()=>{
+  // throttle writes to ~ every 5s of playback
+  const v = $('#video');
+  if(!currentVideoId || !v.duration) return;
+  const last = progress[currentVideoId];
+  if(!last || Math.abs(v.currentTime - last.time) > 5) persistCurrentProgress();
+});
+$('#video').addEventListener('pause', persistCurrentProgress);
+$('#video').addEventListener('seeked', persistCurrentProgress);
+window.addEventListener('beforeunload', persistCurrentProgress);
+
+$('#btn-add-local').onclick = addLocalFolder;
+
+$('#btn-add-drive').onclick = ()=>{
+  $('#in-client-id').value = localStorage.getItem('drive-client-id')||'';
+  $('#in-api-key').value = localStorage.getItem('drive-api-key')||'';
+  $('#in-folder-id').value=''; $('#in-drive-name').value='';
+  $('#dlg-drive').showModal();
+};
+$('#dlg-drive-cancel').onclick = ()=>$('#dlg-drive').close();
+$('#dlg-drive-ok').onclick = async ()=>{
+  const clientId = $('#in-client-id').value.trim();
+  const apiKey = $('#in-api-key').value.trim();
+  const folderId = $('#in-folder-id').value.trim();
+  const name = $('#in-drive-name').value.trim() || 'Pasta do Drive';
+  if(!clientId || !apiKey || !folderId){ toast('Preencha todos os campos.'); return; }
+  localStorage.setItem('drive-client-id', clientId);
+  localStorage.setItem('drive-api-key', apiKey);
+  const subject = {id:'drive-'+Date.now(), name, type:'drive', driveFolderId:folderId, clientId, apiKey};
+  subjects.push(subject);
+  saveSubjects();
+  $('#dlg-drive').close();
+  toast('Conectando ao Google Drive…');
+  await buildDriveLibrary(subject);
+  renderSidebar();
+};
+
+$('#btn-progress').onclick = ()=>$('#dlg-progress').showModal();
+$('#dlg-progress-close').onclick = ()=>$('#dlg-progress').close();
+$('#btn-export').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(progress,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'progresso-aulas.json';
+  a.click();
+};
+$('#in-import').onchange = async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  try{
+    const text = await file.text();
+    const imported = JSON.parse(text);
+    progress = {...progress, ...imported};
+    saveProgress();
+    toast('Progresso importado.');
+    renderSidebar();
+  }catch(err){ toast('Arquivo inválido.'); }
+};
+
+/* ---------------- Boot ---------------- */
+(async function init(){
+  renderSpeedButtons();
+  await openDB();
+  for(const subject of subjects){
+    if(subject.type==='local'){
+      const handle = await idbGet('handles', subject.id);
+      if(handle) await buildLocalLibrary(subject.id, handle);
+      else runtime[subject.id] = {needsPermission:true, lessons:[]};
+    } else {
+      runtime[subject.id] = {lessons:[]}; // build lazily on first click to avoid auto OAuth popups
+    }
+  }
+  renderSidebar();
+})();
+</script>
+</body>
+</html>
