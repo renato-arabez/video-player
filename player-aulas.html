@@ -390,8 +390,11 @@ async function buildLocalLibrary(subjectId, handle, promptIfNeeded=true){
   if(folderProgress){
     let changed = false;
     for(const [id,val] of Object.entries(folderProgress)){
-      const existing = progress[id];
-      if(!existing || (val.updated||0) > (existing.updated||0)){ progress[id]=val; changed=true; }
+      const sepIdx = id.indexOf('::');
+      const filename = sepIdx>=0 ? id.slice(sepIdx+2) : id;
+      const localId = subjectId+'::'+filename;
+      const existing = progress[localId];
+      if(!existing || (val.updated||0) > (existing.updated||0)){ progress[localId]=val; changed=true; }
     }
     if(changed) saveProgress();
   }
