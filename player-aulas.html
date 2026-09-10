@@ -91,7 +91,14 @@
   .lesson.progress .dot{background:var(--accent);}
 
   /* Main */
-  #main{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+  #main{flex:1;display:flex;flex-direction:row;overflow:hidden;}
+  #player-col{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+  #list-col{
+    width:400px;min-width:260px;max-width:70vw;flex-shrink:0;
+    display:flex;flex-direction:column;overflow:hidden;
+    border-left:1px solid var(--border);background:var(--surface);
+    resize:horizontal;
+  }
   #player-wrap{background:#000;flex-shrink:0;position:relative;}
   video{width:100%;max-height:60vh;display:block;background:#000;}
   #empty-state{
@@ -109,8 +116,8 @@
   #seek-group button{padding:4px 9px;font-size:12px;}
   #now-title{font-size:13px;color:var(--text-dim);margin-right:auto;}
 
-  #list-toolbar{display:none;align-items:center;gap:14px;padding:8px 16px;border-bottom:1px solid var(--border);}
-  #list-toolbar h2{font-size:15px;flex:1;min-width:0;}
+  #list-toolbar{display:none;align-items:center;gap:10px;padding:8px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+  #list-toolbar h2{font-size:15px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .toolbar-group{display:flex;align-items:center;gap:4px;}
   .toolbar-group button{padding:4px 8px;font-size:12px;}
   .toolbar-group button.active{background:var(--accent);color:#1a1408;border-color:var(--accent);}
@@ -135,7 +142,7 @@
   .video-meta .s{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
   .check{width:18px;text-align:center;color:var(--ok);font-size:14px;flex-shrink:0;}
 
-  #video-list.grid{display:grid;grid-template-columns:repeat(4, 1fr);gap:14px;align-items:start;}
+  #video-list.grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:14px;align-items:start;}
   #video-list.grid .video-row{
     flex-direction:column;align-items:stretch;width:auto;
     border:1px solid var(--border);padding:8px;gap:8px;position:relative;
@@ -165,6 +172,10 @@
 <body>
 
 <div id="sidebar">
+  <div id="save-bar" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px;">
+    <button class="primary" id="btn-save-now" style="align-self:flex-start;">Salvar agora</button>
+    <div id="save-status" style="font-size:11px;color:var(--text-dim);">Ainda não salvo nesta sessão.</div>
+  </div>
   <div id="sidebar-head">
     <h1>Aulas</h1>
     <p>Suas matérias, seus vídeos, seu progresso.</p>
@@ -178,35 +189,39 @@
 </div>
 
 <div id="main">
-  <div id="player-wrap">
-    <video id="video" controls playsinline></video>
+  <div id="player-col">
+    <div id="player-wrap">
+      <video id="video" controls playsinline></video>
+    </div>
+    <div id="controls-bar" style="display:none">
+      <div id="speed-group"></div>
+      <div id="seek-group">
+        <button id="btn-seek-back" title="Voltar 10s (seta ←)">⟲ 10s</button>
+        <button id="btn-seek-fwd" title="Avançar 10s (seta →)">10s ⟳</button>
+      </div>
+      <div id="track-group" style="display:flex;gap:4px;border-left:1px solid var(--border);padding-left:10px;">
+        <button id="btn-prev-video" title="Vídeo anterior">⏮ Anterior</button>
+        <button id="btn-next-video" title="Próximo vídeo">Próximo ⏭</button>
+      </div>
+      <span id="now-title"></span>
+    </div>
+    <div id="empty-state">Adicione uma pasta local ou do Google Drive para começar.</div>
   </div>
-  <div id="controls-bar" style="display:none">
-    <div id="speed-group"></div>
-    <div id="seek-group">
-      <button id="btn-seek-back" title="Voltar 10s (seta ←)">⟲ 10s</button>
-      <button id="btn-seek-fwd" title="Avançar 10s (seta →)">10s ⟳</button>
+  <div id="list-col">
+    <div id="list-toolbar">
+      <h2 id="list-title"></h2>
+      <div class="toolbar-group" id="size-group">
+        <button id="btn-size-dec" title="Miniaturas menores">–</button>
+        <button id="btn-size-inc" title="Miniaturas maiores">+</button>
+      </div>
+      <div class="toolbar-group" id="layout-group">
+        <button id="btn-layout-list" title="Ver em lista">☰ Lista</button>
+        <button id="btn-layout-grid" title="Ver lado a lado">▦ Grade</button>
+      </div>
     </div>
-    <div id="track-group" style="display:flex;gap:4px;border-left:1px solid var(--border);padding-left:10px;">
-      <button id="btn-prev-video" title="Vídeo anterior">⏮ Anterior</button>
-      <button id="btn-next-video" title="Próximo vídeo">Próximo ⏭</button>
-    </div>
-    <span id="now-title"></span>
-    <button id="btn-save-now" title="Forçar salvar progresso na pasta agora">Salvar agora</button>
+    <div id="video-list" style="display:none"></div>
   </div>
-  <div id="empty-state">Adicione uma pasta local ou do Google Drive para começar.</div>
-  <div id="list-toolbar">
-    <h2 id="list-title"></h2>
-    <div class="toolbar-group" id="size-group">
-      <button id="btn-size-dec" title="Miniaturas menores">–</button>
-      <button id="btn-size-inc" title="Miniaturas maiores">+</button>
-    </div>
-    <div class="toolbar-group" id="layout-group">
-      <button id="btn-layout-list" title="Ver em lista">☰ Lista</button>
-      <button id="btn-layout-grid" title="Ver lado a lado">▦ Grade</button>
-    </div>
-  </div>
-  <div id="video-list" style="display:none"></div>
+</div>
 </div>
 
 <dialog id="dlg-drive">
@@ -256,7 +271,11 @@ function cleanTitle(filename, lessonNum, partNum){
   let m = name.match(/720p\s*[-_ ]*(.+)$/i);
   let tail = m && m[1] ? m[1].trim() : '';
   tail = tail.replace(/[_]+/g,' ').trim();
-  if(tail) return tail.charAt(0).toUpperCase()+tail.slice(1);
+  const num = (lessonNum!==undefined && partNum!==undefined) ? `${lessonNum}.${partNum}` : '';
+  if(tail){
+    tail = tail.charAt(0).toUpperCase()+tail.slice(1);
+    return num ? `${num} — ${tail}` : tail;
+  }
   if(lessonNum!==undefined) return `Aula ${lessonNum}${partNum!==undefined?' • Parte '+partNum:''}`;
   return name;
 }
@@ -344,13 +363,22 @@ async function readFolderProgress(handle){
     return JSON.parse(await file.text());
   }catch(e){ return null; }
 }
-async function writeFolderProgress(handle, data){
+let lastSaveInfo = null;
+function updateSaveStatusUI(){
+  const el = $('#save-status');
+  if(!lastSaveInfo){ el.textContent = 'Ainda não salvo nesta sessão.'; return; }
+  const t = new Date(lastSaveInfo.time);
+  const hh = t.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  el.textContent = `Salvo às ${hh} — ${lastSaveInfo.subjectName}`;
+}
+async function writeFolderProgress(handle, data, subjectName){
   try{
     const fh = await handle.getFileHandle(PROGRESS_FILENAME, {create:true});
     const writable = await fh.createWritable();
     await writable.write(JSON.stringify(data));
     await writable.close();
     console.log('[aulas] progresso salvo em', PROGRESS_FILENAME, data);
+    if(subjectName){ lastSaveInfo = {time:Date.now(), subjectName}; updateSaveStatusUI(); }
     return true;
   }catch(e){
     console.error('[aulas] falha ao salvar progresso na pasta:', e);
@@ -369,7 +397,7 @@ function scheduleFolderWrite(videoId){
   folderWriteTimer = setTimeout(()=>{
     const subset = {};
     for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
-    writeFolderProgress(rt.dirHandle, subset);
+    writeFolderProgress(rt.dirHandle, subset, subject.name);
   }, 3000);
 }
 
@@ -623,20 +651,28 @@ async function openLesson(subject, lesson){
 
 /* ---------------- Player ---------------- */
 const speeds = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5];
+let currentPlaybackRate = parseFloat(localStorage.getItem('ui-playback-rate')) || 1;
+function highlightSpeedButton(){
+  $$('#speed-group button').forEach(x=>{
+    x.classList.toggle('active', parseFloat(x.dataset.speed)===currentPlaybackRate);
+  });
+}
 function renderSpeedButtons(){
   const g = $('#speed-group');
   g.innerHTML='';
   speeds.forEach(sp=>{
     const b = document.createElement('button');
     b.textContent = sp+'x';
+    b.dataset.speed = sp;
     b.onclick = ()=>{
+      currentPlaybackRate = sp;
+      localStorage.setItem('ui-playback-rate', sp);
       $('#video').playbackRate = sp;
-      $$('#speed-group button').forEach(x=>x.classList.remove('active'));
-      b.classList.add('active');
+      highlightSpeedButton();
     };
-    if(sp===1) b.classList.add('active');
     g.appendChild(b);
   });
+  highlightSpeedButton();
 }
 
 let currentSubject = null;
@@ -682,8 +718,8 @@ async function playVideo(subject, video, rowEl){
     return;
   }
   v.src = src;
-  v.playbackRate = 1;
-  $$('#speed-group button').forEach(x=>x.classList.toggle('active', x.textContent==='1x'));
+  v.playbackRate = currentPlaybackRate;
+  highlightSpeedButton();
   const p = progress[video.id];
   v.onloadedmetadata = ()=>{
     if(p && p.time && p.time < v.duration*0.98) v.currentTime = p.time;
@@ -790,7 +826,7 @@ $('#btn-save-now').onclick = async ()=>{
   clearTimeout(folderWriteTimer);
   const subset = {};
   for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
-  const ok = await writeFolderProgress(rt.dirHandle, subset);
+  const ok = await writeFolderProgress(rt.dirHandle, subset, subject.name);
   if(ok) toast('Progresso salvo em '+PROGRESS_FILENAME);
 };
 document.addEventListener('keydown', (e)=>{
