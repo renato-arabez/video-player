@@ -138,7 +138,13 @@
   .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
   .thumb .bar{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);}
   .video-meta{flex:1;min-width:0;}
-  .video-meta .t{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .t-row{display:flex;align-items:center;gap:5px;min-width:0;}
+  .video-meta .t{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .t-row button[data-edit]{padding:1px 5px;font-size:10px;flex-shrink:0;opacity:.55;}
+  .t-row button[data-edit]:hover{opacity:1;}
+  .rename-row{display:flex;gap:4px;align-items:center;}
+  .rename-row input{flex:1;min-width:0;font-size:12.5px;padding:3px 6px;}
+  .rename-row button{padding:2px 7px;font-size:11px;flex-shrink:0;}
   .video-meta .s{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
   .check{width:18px;text-align:center;color:var(--ok);font-size:14px;flex-shrink:0;}
 
@@ -266,6 +272,9 @@ function fmtTime(sec){
   const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
   return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0');
 }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 function cleanTitle(filename, lessonNum, partNum){
   let name = filename.replace(/\.\w+$/,'');
   let m = name.match(/720p\s*[-_ ]*(.+)$/i);
@@ -386,19 +395,21 @@ async function writeFolderProgress(handle, data, subjectName){
     return false;
   }
 }
-let folderWriteTimer=null;
-function scheduleFolderWrite(videoId){
+const FOLDER_WRITE_INTERVAL = 5*60*1000; // 5 minutos — evita gravações excessivas na pasta sincronizada
+let lastFolderWriteAt = {}; // subjectId -> timestamp
+function scheduleFolderWrite(videoId, force=false){
   const subjectId = videoId.split('::')[0];
   const subject = subjects.find(s=>s.id===subjectId);
   if(!subject || subject.type!=='local') return;
   const rt = runtime[subjectId];
   if(!rt || !rt.dirHandle) return;
-  clearTimeout(folderWriteTimer);
-  folderWriteTimer = setTimeout(()=>{
-    const subset = {};
-    for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
-    writeFolderProgress(rt.dirHandle, subset, subject.name);
-  }, 3000);
+  const now = Date.now();
+  const last = lastFolderWriteAt[subjectId] || 0;
+  if(!force && (now - last) < FOLDER_WRITE_INTERVAL) return; // ainda dentro do intervalo, aguarda
+  lastFolderWriteAt[subjectId] = now;
+  const subset = {};
+  for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
+  writeFolderProgress(rt.dirHandle, subset, subject.name);
 }
 
 async function buildLocalLibrary(subjectId, handle, promptIfNeeded=true){
@@ -634,11 +645,18 @@ async function openLesson(subject, lesson){
     row.innerHTML = `
       <div class="thumb" data-thumb><span>carregando…</span><div class="bar" style="width:${pct}%"></div></div>
       <div class="video-meta">
-        <div class="t">${video.title}</div>
+        <div class="t-row">
+          <div class="t" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</div>
+          <button class="ghost" data-edit title="Renomear o arquivo">✎</button>
+        </div>
         <div class="s">${p ? fmtTime(p.time)+(p.duration?' / '+fmtTime(p.duration):'') : 'não iniciado'}</div>
       </div>
       <div class="check">${done?'✓':''}</div>
     `;
+    row.querySelector('[data-edit]').onclick = (e)=>{
+      e.stopPropagation();
+      startInlineRename(subject, lesson, video, row);
+    };
     row.onclick = ()=>playVideo(subject, video, row);
     list.appendChild(row);
     const thumbEl = row.querySelector('[data-thumb]');
@@ -647,6 +665,84 @@ async function openLesson(subject, lesson){
       else thumbEl.innerHTML = `<span>sem prévia</span>`;
     });
   }
+}
+
+/* ---------------- Rename (suffix-only, no content rewrite) ---------------- */
+function splitFilenameParts(filename){
+  const em = filename.match(/\.[a-zA-Z0-9]+$/);
+  const ext = em ? em[0] : '';
+  const base = ext ? filename.slice(0, -ext.length) : filename;
+  const tm = base.match(/^(.*?720p)\s*[-_ ]*(.*)$/i);
+  if(tm) return { prefix: tm[1], tail: tm[2].replace(/_/g,' ').trim(), ext };
+  return { prefix: base, tail: '', ext };
+}
+
+async function renameVideoSuffix(subject, video, newSuffix){
+  if(!video.fileEntry || typeof video.fileEntry.move !== 'function'){
+    toast('Seu navegador não suporta renomear arquivos (precisa do Chrome atualizado).');
+    return false;
+  }
+  const oldName = video.fileEntry.name;
+  const {prefix, ext} = splitFilenameParts(oldName);
+  const newName = prefix + (newSuffix ? ' '+newSuffix : '') + ext;
+  if(newName === oldName) return true; // nothing changed
+  try{
+    await video.fileEntry.move(newName);
+  }catch(e){
+    console.error(e);
+    toast('Falha ao renomear: '+e.message);
+    return false;
+  }
+  const oldId = video.id;
+  const newId = subject.id+'::'+newName;
+  if(progress[oldId]){ progress[newId]=progress[oldId]; delete progress[oldId]; saveProgress(); }
+  try{
+    const thumbCached = await idbGet('thumbs', oldId+'@'+THUMB_VERSION);
+    if(thumbCached){
+      await idbSet('thumbs', newId+'@'+THUMB_VERSION, thumbCached);
+      await idbDel('thumbs', oldId+'@'+THUMB_VERSION);
+    }
+  }catch(e){}
+  const parsed = parseLesson(newName);
+  video.id = newId;
+  video.title = cleanTitle(newName, parsed && parsed.lessonNum, parsed && parsed.partNum);
+  if(currentVideoId === oldId){
+    currentVideoId = newId;
+    $('#now-title').textContent = video.title;
+  }
+  scheduleFolderWrite(newId, true);
+  return true;
+}
+
+function startInlineRename(subject, lesson, video, row){
+  const titleRow = row.querySelector('.t-row');
+  const {tail} = splitFilenameParts(video.fileEntry.name);
+  const editor = document.createElement('div');
+  editor.className = 'rename-row';
+  editor.innerHTML = `<input type="text" value="${escapeHtml(tail)}" placeholder="Sem título (só o número)">
+    <button data-ok class="primary">✓</button>
+    <button data-cancel class="ghost">✕</button>`;
+  titleRow.replaceWith(editor);
+  const input = editor.querySelector('input');
+  input.focus(); input.select();
+  let done = false;
+  const finish = async (commit)=>{
+    if(done) return; done = true;
+    if(commit){
+      const val = input.value.trim();
+      const ok = await renameVideoSuffix(subject, video, val);
+      if(!ok){ done = false; return; }
+    }
+    openLesson(subject, lesson);
+  };
+  editor.addEventListener('click', e=>e.stopPropagation());
+  editor.querySelector('[data-ok]').onclick = ()=>finish(true);
+  editor.querySelector('[data-cancel]').onclick = ()=>finish(false);
+  input.addEventListener('keydown', e=>{
+    e.stopPropagation();
+    if(e.key==='Enter') finish(true);
+    else if(e.key==='Escape') finish(false);
+  });
 }
 
 /* ---------------- Player ---------------- */
@@ -743,7 +839,10 @@ $('#video').addEventListener('timeupdate', ()=>{
   const last = progress[currentVideoId];
   if(!last || Math.abs(v.currentTime - last.time) > 5) persistCurrentProgress();
 });
-$('#video').addEventListener('pause', persistCurrentProgress);
+$('#video').addEventListener('pause', ()=>{
+  persistCurrentProgress();
+  if(currentVideoId) scheduleFolderWrite(currentVideoId, true);
+});
 $('#video').addEventListener('seeked', persistCurrentProgress);
 window.addEventListener('beforeunload', persistCurrentProgress);
 
@@ -823,11 +922,10 @@ $('#btn-save-now').onclick = async ()=>{
   const rt = runtime[subjectId];
   if(!subject || subject.type!=='local'){ toast('Essa matéria não é uma pasta local.'); return; }
   if(!rt || !rt.dirHandle){ toast('Sem referência da pasta — reabra a matéria clicando nela na barra lateral.'); return; }
-  clearTimeout(folderWriteTimer);
   const subset = {};
   for(const [id,val] of Object.entries(progress)) if(id.startsWith(subjectId+'::')) subset[id]=val;
   const ok = await writeFolderProgress(rt.dirHandle, subset, subject.name);
-  if(ok) toast('Progresso salvo em '+PROGRESS_FILENAME);
+  if(ok){ lastFolderWriteAt[subjectId] = Date.now(); toast('Progresso salvo em '+PROGRESS_FILENAME); }
 };
 document.addEventListener('keydown', (e)=>{
   const tag = (document.activeElement && document.activeElement.tagName) || '';
