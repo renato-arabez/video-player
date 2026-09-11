@@ -103,7 +103,7 @@
     resize:horizontal;
   }
   #player-wrap{background:#000;flex-shrink:0;position:relative;}
-  video{width:100%;max-height:60vh;display:block;background:#000;}
+  video{width:100%;max-height:72vh;display:block;background:#000;}
   #empty-state{
     flex:1;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);font-size:14px;text-align:center;padding:40px;
@@ -158,7 +158,7 @@
     border-radius:8px;padding:20px;max-width:480px;width:90%;
   }
   dialog::backdrop{background:rgba(0,0,0,.6);}
-  dialog h3{margin-bottom:10px;font-size:16px;}
+  dialog h3{margin-bottom:10px;font-size:16px;cursor:move;user-select:none;}
   dialog p{font-size:12.5px;color:var(--text-dim);line-height:1.5;}
   dialog label{display:block;font-size:12px;margin:10px 0 4px;color:var(--text-dim);}
   dialog input[type=text]{width:100%;}
@@ -207,6 +207,7 @@
         <button id="btn-next-video" title="Próximo vídeo">Próximo ⏭</button>
       </div>
       <span id="now-title"></span>
+      <button id="btn-mark-unwatched" class="ghost" title="Marcar este vídeo como não reproduzido">Não reproduzido</button>
     </div>
     <div id="empty-state">Adicione uma pasta local ou do Google Drive para começar.</div>
   </div>
@@ -279,6 +280,11 @@ function fmtTime(sec){
   sec=Math.floor(sec||0);
   const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
   return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(s).padStart(2,'0');
+}
+function isDone(p){
+  if(!p) return false;
+  if(typeof p.done === 'boolean') return p.done;
+  return !!(p.duration && p.time >= p.duration*0.95); // fallback for older records saved before the 'done' flag existed
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -570,6 +576,7 @@ async function getThumb(video){
 }
 
 /* ---------------- Sidebar rendering ---------------- */
+let expandedSubjects = new Set();
 function renderSidebar(){
   const tree = $('#subject-tree');
   tree.innerHTML='';
@@ -579,6 +586,8 @@ function renderSidebar(){
     const rt = runtime[subject.id];
     const row = document.createElement('div');
     row.className='subject-row';
+    const isOpen = expandedSubjects.has(subject.id);
+    if(isOpen) row.classList.add('open');
     const notLoadedYet = rt && rt.needsPermission && subject.type==='drive' && !rt.triedOnce;
     row.innerHTML = `<span class="chev">▸</span><span>${subject.name}</span>` +
       (notLoadedYet ? `<span class="subject-warn">carregar ▸</span>` :
@@ -591,11 +600,13 @@ function renderSidebar(){
       subjects = subjects.filter(s=>s.id!==subject.id);
       saveSubjects();
       delete runtime[subject.id];
+      expandedSubjects.delete(subject.id);
       await idbDel('handles', subject.id);
       renderSidebar();
     };
     const lessonList = document.createElement('div');
     lessonList.className='lesson-list';
+    if(isOpen) lessonList.classList.add('open');
 
     row.onclick = async ()=>{
       if(rt && rt.needsPermission){
@@ -609,24 +620,22 @@ function renderSidebar(){
         renderSidebar();
         return;
       }
-      row.classList.toggle('open');
-      lessonList.classList.toggle('open');
+      if(expandedSubjects.has(subject.id)) expandedSubjects.delete(subject.id);
+      else expandedSubjects.add(subject.id);
+      renderSidebar();
     };
 
     if(rt && rt.lessons){
       rt.lessons.forEach(lesson=>{
         const chip = document.createElement('div');
         chip.className='lesson-chip';
-        const allDone = lesson.videos.every(v=>{
-          const p = progress[v.id];
-          return p && p.duration && p.time >= p.duration*0.95;
-        });
-        const anyStarted = lesson.videos.some(v=>progress[v.id] && progress[v.id].time>2);
+        const allDone = lesson.videos.every(v=>isDone(progress[v.id]));
+        const anyStarted = lesson.videos.some(v=>progress[v.id] && (progress[v.id].time>2 || isDone(progress[v.id])));
         if(allDone) chip.classList.add('done'); else if(anyStarted) chip.classList.add('progress');
         if(lesson === currentOpenLesson) chip.classList.add('active');
         const numMatch = lesson.label.match(/(\d+)/);
         chip.textContent = numMatch ? numMatch[1] : lesson.label.slice(0,3);
-        chip.title = lesson.label;
+        chip.title = lesson.label+'\n'+lesson.videos.map(v=>v.title).join('\n');
         chip.onclick = (e)=>{ e.stopPropagation(); openLesson(subject, lesson); renderSidebar(); };
         lessonList.appendChild(chip);
       });
@@ -654,7 +663,7 @@ async function openLesson(subject, lesson){
     row.dataset.id = video.id;
     const p = progress[video.id];
     const pct = p && p.duration ? Math.min(100, (p.time/p.duration)*100) : 0;
-    const done = p && p.duration && p.time >= p.duration*0.95;
+    const done = isDone(p);
     row.innerHTML = `
       <div class="thumb" data-thumb><span>carregando…</span><div class="bar" style="width:${pct}%"></div></div>
       <div class="video-meta">
@@ -824,7 +833,10 @@ async function playVideo(subject, video, rowEl){
 function persistCurrentProgress(){
   const v = $('#video');
   if(!currentVideoId || !v.duration) return;
-  progress[currentVideoId] = {time: v.currentTime, duration: v.duration, updated: Date.now()};
+  const prev = progress[currentVideoId];
+  const doneNow = v.currentTime >= v.duration*0.95;
+  const done = doneNow || (prev ? isDone(prev) : false);
+  progress[currentVideoId] = {time: v.currentTime, duration: v.duration, updated: Date.now(), done};
   saveProgress();
   scheduleFolderWrite(currentVideoId);
 }
@@ -918,6 +930,17 @@ $('#btn-seek-back').onclick = ()=>seekBy(-10);
 $('#btn-seek-fwd').onclick = ()=>seekBy(10);
 $('#btn-prev-video').onclick = ()=>playAdjacent(-1);
 $('#btn-next-video').onclick = ()=>playAdjacent(1);
+$('#btn-mark-unwatched').onclick = ()=>{
+  if(!currentVideoId){ toast('Nenhum vídeo selecionado.'); return; }
+  const v = $('#video');
+  const prevDuration = (progress[currentVideoId] && progress[currentVideoId].duration) || v.duration || 0;
+  progress[currentVideoId] = {time:0, duration:prevDuration, updated:Date.now(), done:false};
+  saveProgress();
+  scheduleFolderWrite(currentVideoId, true);
+  if(isFinite(v.duration)) v.currentTime = 0;
+  toast('Marcado como não reproduzido.');
+  if(currentSubject && currentOpenLesson) openLesson(currentSubject, currentOpenLesson);
+};
 $('#btn-save-now').onclick = async ()=>{
   if(!currentVideoId){ toast('Nenhum vídeo selecionado.'); return; }
   persistCurrentProgress();
@@ -959,6 +982,34 @@ $('#in-import').onchange = async (e)=>{
 };
 
 /* ---------------- Boot ---------------- */
+function makeDraggable(dialog){
+  const handle = dialog.querySelector('h3');
+  if(!handle) return;
+  let dragging=false, startX=0, startY=0, origX=0, origY=0;
+  handle.addEventListener('mousedown', (e)=>{
+    dragging = true;
+    const rect = dialog.getBoundingClientRect();
+    origX = rect.left; origY = rect.top;
+    startX = e.clientX; startY = e.clientY;
+    dialog.style.margin = '0';
+    dialog.style.position = 'fixed';
+    dialog.style.left = origX+'px';
+    dialog.style.top = origY+'px';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e)=>{
+    if(!dragging) return;
+    dialog.style.left = (origX + (e.clientX - startX)) + 'px';
+    dialog.style.top = (origY + (e.clientY - startY)) + 'px';
+  });
+  window.addEventListener('mouseup', ()=>{ dragging = false; });
+  // reset to centered position each time it's reopened
+  dialog.addEventListener('close', ()=>{
+    dialog.style.position=''; dialog.style.margin=''; dialog.style.left=''; dialog.style.top='';
+  });
+}
+[$('#dlg-drive'), $('#dlg-progress'), $('#dlg-rename')].forEach(makeDraggable);
+
 (async function init(){
   renderSpeedButtons();
   await openDB();
