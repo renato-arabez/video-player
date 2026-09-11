@@ -81,14 +81,17 @@
   .subject-badge{margin-left:auto;font-size:10px;color:var(--text-dim);font-weight:400;background:var(--surface-2);border-radius:10px;padding:1px 7px;}
   .subject-warn{margin-left:auto;font-size:11px;color:var(--danger);}
 
-  .lesson-list{display:none;padding:2px 0 6px;}
-  .lesson-list.open{display:block;}
-  .lesson{padding:6px 14px 6px 26px;font-size:12.5px;color:var(--text-dim);cursor:pointer;}
-  .lesson:hover{color:var(--text);}
-  .lesson.active{color:var(--accent);font-weight:600;}
-  .lesson .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;background:var(--border);vertical-align:middle;}
-  .lesson.done .dot{background:var(--ok);}
-  .lesson.progress .dot{background:var(--accent);}
+  .lesson-list{display:none;flex-wrap:wrap;gap:6px;padding:8px 14px 10px 20px;}
+  .lesson-list.open{display:flex;}
+  .lesson-chip{
+    width:30px;height:30px;border-radius:6px;border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-size:11.5px;color:var(--text-dim);cursor:pointer;background:var(--surface-2);flex-shrink:0;
+  }
+  .lesson-chip:hover{border-color:var(--accent-dim);color:var(--text);}
+  .lesson-chip.active{border-color:var(--accent);color:var(--accent);font-weight:600;}
+  .lesson-chip.progress{background:rgba(207,157,79,.16);border-color:var(--accent-dim);color:var(--text);}
+  .lesson-chip.done{background:rgba(79,138,139,.2);border-color:var(--ok);color:var(--text);}
 
   /* Main */
   #main{flex:1;display:flex;flex-direction:row;overflow:hidden;}
@@ -124,9 +127,9 @@
 
   #video-list{flex:1;overflow-y:auto;padding:14px 16px 40px;--thumb-h:180px;}
   .video-row{
-    display:flex;gap:12px;align-items:center;
+    display:flex;flex-direction:column;align-items:flex-start;gap:8px;
     padding:8px;border-radius:var(--radius);cursor:pointer;
-    border:1px solid transparent;
+    border:1px solid transparent;position:relative;
   }
   .video-row:hover{background:var(--surface);}
   .video-row.active{border-color:var(--accent-dim);background:var(--surface);}
@@ -137,24 +140,18 @@
   }
   .thumb img{width:100%;height:100%;object-fit:cover;display:block;}
   .thumb .bar{position:absolute;bottom:0;left:0;height:3px;background:var(--accent);}
-  .video-meta{flex:1;min-width:0;}
-  .t-row{display:flex;align-items:center;gap:5px;min-width:0;}
-  .video-meta .t{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
-  .t-row button[data-edit]{padding:1px 5px;font-size:10px;flex-shrink:0;opacity:.55;}
-  .t-row button[data-edit]:hover{opacity:1;}
-  .rename-row{display:flex;gap:4px;align-items:center;}
-  .rename-row input{flex:1;min-width:0;font-size:12.5px;padding:3px 6px;}
-  .rename-row button{padding:2px 7px;font-size:11px;flex-shrink:0;}
+  .video-meta{width:100%;min-width:0;}
+  .video-meta .t{font-size:11.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;cursor:pointer;}
+  .video-meta .t:hover{color:var(--accent);text-decoration:underline;}
   .video-meta .s{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
-  .check{width:18px;text-align:center;color:var(--ok);font-size:14px;flex-shrink:0;}
+  .check{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.55);border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;color:var(--ok);font-size:12px;}
 
   #video-list.grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));gap:14px;align-items:start;}
   #video-list.grid .video-row{
-    flex-direction:column;align-items:stretch;width:auto;
-    border:1px solid var(--border);padding:8px;gap:8px;position:relative;
+    border:1px solid var(--border);padding:8px;gap:8px;
   }
   #video-list.grid .thumb{width:100%;height:auto;aspect-ratio:16/9;}
-  #video-list.grid .check{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.55);border-radius:50%;width:20px;height:20px;line-height:20px;}
+
 
   dialog{
     background:var(--surface);color:var(--text);border:1px solid var(--border);
@@ -254,6 +251,17 @@
       <input type="file" id="in-import" accept="application/json" style="display:none">
     </label>
     <button class="ghost" id="dlg-progress-close">Fechar</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-rename">
+  <h3>Renomear vídeo</h3>
+  <p>Isso edita só o título (o que aparece depois de "720p" no nome do arquivo). A numeração da aula não muda, e o arquivo é apenas renomeado no disco — o vídeo em si não é reescrito.</p>
+  <label>Título</label>
+  <input type="text" id="in-rename-title" placeholder="Deixe em branco pra tirar o título">
+  <div class="row">
+    <button class="ghost" id="dlg-rename-cancel">Cancelar</button>
+    <button class="primary" id="dlg-rename-ok">Salvar</button>
   </div>
 </dialog>
 
@@ -607,17 +615,20 @@ function renderSidebar(){
 
     if(rt && rt.lessons){
       rt.lessons.forEach(lesson=>{
-        const li = document.createElement('div');
-        li.className='lesson';
+        const chip = document.createElement('div');
+        chip.className='lesson-chip';
         const allDone = lesson.videos.every(v=>{
           const p = progress[v.id];
           return p && p.duration && p.time >= p.duration*0.95;
         });
         const anyStarted = lesson.videos.some(v=>progress[v.id] && progress[v.id].time>2);
-        if(allDone) li.classList.add('done'); else if(anyStarted) li.classList.add('progress');
-        li.innerHTML = `<span class="dot"></span>${lesson.label}`;
-        li.onclick = (e)=>{ e.stopPropagation(); openLesson(subject, lesson); };
-        lessonList.appendChild(li);
+        if(allDone) chip.classList.add('done'); else if(anyStarted) chip.classList.add('progress');
+        if(lesson === currentOpenLesson) chip.classList.add('active');
+        const numMatch = lesson.label.match(/(\d+)/);
+        chip.textContent = numMatch ? numMatch[1] : lesson.label.slice(0,3);
+        chip.title = lesson.label;
+        chip.onclick = (e)=>{ e.stopPropagation(); openLesson(subject, lesson); renderSidebar(); };
+        lessonList.appendChild(chip);
       });
     }
 
@@ -628,7 +639,9 @@ function renderSidebar(){
 }
 
 /* ---------------- Lesson / video list rendering ---------------- */
+let currentOpenLesson = null;
 async function openLesson(subject, lesson){
+  currentOpenLesson = lesson;
   $('#empty-state').style.display='none';
   const list = $('#video-list');
   list.style.display = listLayout==='grid' ? 'grid' : 'block';
@@ -645,17 +658,14 @@ async function openLesson(subject, lesson){
     row.innerHTML = `
       <div class="thumb" data-thumb><span>carregando…</span><div class="bar" style="width:${pct}%"></div></div>
       <div class="video-meta">
-        <div class="t-row">
-          <div class="t" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</div>
-          <button class="ghost" data-edit title="Renomear o arquivo">✎</button>
-        </div>
+        <div class="t" data-title title="${escapeHtml(video.title)} (clique para renomear)">${escapeHtml(video.title)}</div>
         <div class="s">${p ? fmtTime(p.time)+(p.duration?' / '+fmtTime(p.duration):'') : 'não iniciado'}</div>
       </div>
       <div class="check">${done?'✓':''}</div>
     `;
-    row.querySelector('[data-edit]').onclick = (e)=>{
+    row.querySelector('[data-title]').onclick = (e)=>{
       e.stopPropagation();
-      startInlineRename(subject, lesson, video, row);
+      openRenameModal(subject, lesson, video);
     };
     row.onclick = ()=>playVideo(subject, video, row);
     list.appendChild(row);
@@ -714,35 +724,23 @@ async function renameVideoSuffix(subject, video, newSuffix){
   return true;
 }
 
-function startInlineRename(subject, lesson, video, row){
-  const titleRow = row.querySelector('.t-row');
+let renameTarget = null;
+function openRenameModal(subject, lesson, video){
+  renameTarget = {subject, lesson, video};
   const {tail} = splitFilenameParts(video.fileEntry.name);
-  const editor = document.createElement('div');
-  editor.className = 'rename-row';
-  editor.innerHTML = `<input type="text" value="${escapeHtml(tail)}" placeholder="Sem título (só o número)">
-    <button data-ok class="primary">✓</button>
-    <button data-cancel class="ghost">✕</button>`;
-  titleRow.replaceWith(editor);
-  const input = editor.querySelector('input');
-  input.focus(); input.select();
-  let done = false;
-  const finish = async (commit)=>{
-    if(done) return; done = true;
-    if(commit){
-      const val = input.value.trim();
-      const ok = await renameVideoSuffix(subject, video, val);
-      if(!ok){ done = false; return; }
-    }
-    openLesson(subject, lesson);
-  };
-  editor.addEventListener('click', e=>e.stopPropagation());
-  editor.querySelector('[data-ok]').onclick = ()=>finish(true);
-  editor.querySelector('[data-cancel]').onclick = ()=>finish(false);
-  input.addEventListener('keydown', e=>{
-    e.stopPropagation();
-    if(e.key==='Enter') finish(true);
-    else if(e.key==='Escape') finish(false);
-  });
+  $('#in-rename-title').value = tail;
+  $('#dlg-rename').showModal();
+  $('#in-rename-title').focus();
+  $('#in-rename-title').select();
+}
+async function confirmRename(){
+  if(!renameTarget) return;
+  const {subject, lesson, video} = renameTarget;
+  const val = $('#in-rename-title').value.trim();
+  const ok = await renameVideoSuffix(subject, video, val);
+  $('#dlg-rename').close();
+  renameTarget = null;
+  if(ok) openLesson(subject, lesson);
 }
 
 /* ---------------- Player ---------------- */
@@ -874,6 +872,12 @@ $('#dlg-drive-ok').onclick = async ()=>{
 
 $('#btn-progress').onclick = ()=>$('#dlg-progress').showModal();
 $('#dlg-progress-close').onclick = ()=>$('#dlg-progress').close();
+$('#dlg-rename-cancel').onclick = ()=>{ $('#dlg-rename').close(); renameTarget=null; };
+$('#dlg-rename-ok').onclick = confirmRename;
+$('#in-rename-title').addEventListener('keydown', e=>{
+  e.stopPropagation();
+  if(e.key==='Enter'){ e.preventDefault(); confirmRename(); }
+});
 
 /* Thumb size (height-based) */
 const THUMB_SIZES = [100, 130, 150, 180, 220, 260];
