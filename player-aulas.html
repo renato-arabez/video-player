@@ -182,6 +182,7 @@
   <div id="sidebar-head">
     <h1>Aulas</h1>
     <p>Suas matérias, seus vídeos, seu progresso.</p>
+    <div id="continue-watching" style="display:none;margin-top:8px;font-size:12.5px;color:var(--accent);cursor:pointer;line-height:1.4;"></div>
   </div>
   <div id="add-buttons">
     <button class="primary" id="btn-add-local" title="Adicionar uma pasta do computador como matéria">+ Pasta local</button>
@@ -541,6 +542,14 @@ async function fetchDriveBlobUrl(subject, driveFileId){
   const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
+async function fetchDrivePartialBlobUrl(subject, driveFileId, maxBytes=4*1024*1024){
+  const token = await getDriveToken(subject);
+  const url = `https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`;
+  const res = await fetch(url, {headers:{Authorization:'Bearer '+token, Range:`bytes=0-${maxBytes-1}`}});
+  if(!res.ok && res.status!==206) throw new Error('Falha ao baixar prévia do Drive');
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
 
 /* ---------------- Thumbnails ---------------- */
 const THUMB_VERSION = 'v2';
@@ -556,8 +565,10 @@ async function getThumb(video){
       const file = await video.fileEntry.getFile();
       srcUrl = URL.createObjectURL(file);
     } else {
+      // Baixa só os primeiros MB (Range request) — suficiente pra decodificar um frame,
+      // evita puxar o vídeo inteiro só pra gerar a miniatura.
       const subject = subjects.find(s=>video.id.startsWith(s.id+'::'));
-      srcUrl = await fetchDriveBlobUrl(subject, video.driveFileId);
+      srcUrl = await fetchDrivePartialBlobUrl(subject, video.driveFileId);
     }
     tempEl.src = srcUrl;
     await new Promise((res,rej)=>{
@@ -577,7 +588,42 @@ async function getThumb(video){
 
 /* ---------------- Sidebar rendering ---------------- */
 let expandedSubjects = new Set();
+function findMostRecentUnfinished(){
+  let best = null;
+  for(const [id, p] of Object.entries(progress)){
+    if(!p || isDone(p) || !(p.time > 2)) continue;
+    if(!best || (p.updated||0) > (best.p.updated||0)) best = {id, p};
+  }
+  if(!best) return null;
+  const sepIdx = best.id.indexOf('::');
+  const subjectId = best.id.slice(0, sepIdx);
+  const filename = best.id.slice(sepIdx+2);
+  const subject = subjects.find(s=>s.id===subjectId);
+  if(!subject) return null;
+  const rt = runtime[subjectId];
+  if(!rt || !rt.lessons) return null;
+  for(const lesson of rt.lessons){
+    const video = lesson.videos.find(v=>v.id===best.id);
+    if(video) return {subject, lesson, video};
+  }
+  return null;
+}
+function renderContinueWatching(){
+  const el = $('#continue-watching');
+  const found = findMostRecentUnfinished();
+  if(!found){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML = `▶ Continuar assistindo:<br><b>${escapeHtml(found.video.title)}</b> <span style="color:var(--text-dim)">— ${escapeHtml(found.subject.name)}</span>`;
+  el.onclick = async ()=>{
+    await openLesson(found.subject, found.lesson);
+    const rowEl = document.querySelector(`.video-row[data-id="${found.video.id}"]`);
+    playVideo(found.subject, found.video, rowEl);
+    renderSidebar();
+  };
+}
+
 function renderSidebar(){
+  renderContinueWatching();
   const tree = $('#subject-tree');
   tree.innerHTML='';
   subjects.forEach(subject=>{
